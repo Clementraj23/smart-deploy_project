@@ -1,9 +1,10 @@
+# ---------------- EVENTLET (MUST BE FIRST) ----------------
 import eventlet
 eventlet.monkey_patch()
 
+# ---------------- IMPORTS ----------------
 import os
 import subprocess
-import time
 import random
 import shutil
 import psutil
@@ -46,11 +47,14 @@ def deploy():
         repo_name = repo.split("/")[-1].replace(".git", "")
         project_path = os.path.join(DEPLOY_DIR, repo_name)
 
+        # remove old project if exists
         if os.path.exists(project_path):
             shutil.rmtree(project_path)
 
+        # clone repo
         subprocess.run(["git", "clone", repo, project_path], check=True)
 
+        # check Dockerfile
         dockerfile = os.path.join(project_path, "Dockerfile")
         if not os.path.exists(dockerfile):
             return jsonify({"error": "❌ No Dockerfile found in repo"}), 400
@@ -58,13 +62,16 @@ def deploy():
         image_name = f"{repo_name}_img"
         container_name = f"{repo_name}_{random.randint(1000,9999)}"
 
+        # build image
         subprocess.run(
             ["docker", "build", "-t", image_name, project_path],
             check=True
         )
 
-        port = random.randint(5001, 5999)
+        # use safe port range (matches your AWS rule)
+        port = random.randint(8000, 8100)
 
+        # run container
         subprocess.run([
             "docker", "run", "-d",
             "-p", f"{port}:5000",
@@ -79,11 +86,13 @@ def deploy():
             "url": url
         })
 
+        # ✅ send log to frontend
         socketio.emit("logs", f"🚀 Deployed {repo_name} → {url}\n")
 
         return jsonify({"url": url})
 
     except Exception as e:
+        socketio.emit("logs", f"❌ Deployment error: {str(e)}\n")
         return jsonify({"error": str(e)}), 500
 
 # ---------------- GET DEPLOYMENTS ----------------
@@ -104,25 +113,38 @@ def webhook():
 # ---------------- CPU MONITOR ----------------
 def cpu_monitor():
     while True:
-        cpu = psutil.cpu_percent(interval=1)
-        socketio.emit("cpu", cpu)
+        try:
+            cpu = psutil.cpu_percent(interval=1)
 
-        if cpu > 50:
-            socketio.emit("alert", f"⚠️ High CPU: {cpu}%")
+            # ✅ emit CPU data
+            socketio.emit("cpu", cpu)
 
-        socketio.sleep(2)   # ✅ FIXED (was time.sleep)
+            # ✅ alert
+            if cpu > 50:
+                socketio.emit("alert", f"⚠️ High CPU: {cpu}%")
+
+        except Exception as e:
+            print("CPU ERROR:", e)
+
+        socketio.sleep(2)   # ✅ IMPORTANT FIX
 
 # ---------------- LOG STREAM ----------------
 def log_stream():
     while True:
-        socketio.emit("logs", "📜 System running...\n")
-        socketio.sleep(5)   # ✅ FIXED (was time.sleep)
+        try:
+            socketio.emit("logs", "📜 System running...\n")
+        except Exception as e:
+            print("LOG ERROR:", e)
+
+        socketio.sleep(5)   # ✅ IMPORTANT FIX
 
 # ---------------- MAIN ----------------
 if __name__ == "__main__":
     print("🚀 Starting SmartDeploy AI...")
 
+    # start background workers
     socketio.start_background_task(cpu_monitor)
     socketio.start_background_task(log_stream)
 
+    # run server
     socketio.run(app, host="0.0.0.0", port=5003)

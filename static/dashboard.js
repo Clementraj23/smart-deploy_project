@@ -1,15 +1,23 @@
 // ✅ FIXED SOCKET CONNECTION
-const socket = io(window.location.origin);
+const socket = io(window.location.origin, {
+    transports: ["websocket"]
+});
 
 // ---------------- DEPLOY ----------------
 async function deploy() {
     const repo = document.getElementById("repo").value;
 
-    await fetch("/deploy", {
+    const res = await fetch("/deploy", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ repo })
     });
+
+    const data = await res.json();
+
+    if (data.url) {
+        alert(`🚀 Deployed successfully!\n${data.url}`);
+    }
 }
 
 // ---------------- LOAD DEPLOYMENTS ----------------
@@ -33,16 +41,49 @@ async function loadDeployments() {
 }
 
 // ---------------- SOCKET EVENTS ----------------
-socket.on("cpu", (data) => {
-    console.log("CPU:", data);
+
+// CPU → update chart
+const ctx = document.getElementById("cpuChart").getContext("2d");
+
+const cpuChart = new Chart(ctx, {
+    type: "line",
+    data: {
+        labels: [],
+        datasets: [{
+            label: "CPU %",
+            data: [],
+            borderWidth: 2
+        }]
+    },
+    options: {
+        responsive: true
+    }
 });
 
+socket.on("connect", () => {
+    console.log("✅ Socket connected");
+});
+
+socket.on("cpu", (data) => {
+    cpuChart.data.labels.push("");
+    cpuChart.data.datasets[0].data.push(data);
+
+    if (cpuChart.data.labels.length > 20) {
+        cpuChart.data.labels.shift();
+        cpuChart.data.datasets[0].data.shift();
+    }
+
+    cpuChart.update();
+});
+
+// Logs
 socket.on("logs", (msg) => {
     const logs = document.getElementById("logs");
     logs.textContent += msg;
     logs.scrollTop = logs.scrollHeight;
 });
 
+// Alerts
 socket.on("alert", (msg) => {
     const alerts = document.getElementById("alerts");
     const el = document.createElement("div");
