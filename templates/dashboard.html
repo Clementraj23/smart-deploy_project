@@ -1,52 +1,117 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8">
     <title>SmartDeploy AI</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <!-- Styles -->
+    <link rel="stylesheet" href="/static/style.css">
+
     <style>
         body {
-            background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background: linear-gradient(135deg, #1e1e2f, #2b2b4b);
             color: white;
-            font-family: "Poppins", sans-serif;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: auto;
+            padding: 40px 20px;
+        }
+
+        h1 {
             text-align: center;
-            padding: 40px;
+            margin-bottom: 30px;
+        }
+
+        .deploy-box {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            margin-bottom: 30px;
         }
 
         input {
-            padding: 10px;
-            width: 300px;
-            border-radius: 10px;
+            padding: 12px;
+            width: 60%;
+            border-radius: 8px;
             border: none;
+            outline: none;
+            font-size: 16px;
         }
 
         button {
-            padding: 10px 20px;
-            border-radius: 10px;
+            padding: 12px 20px;
+            border-radius: 8px;
             border: none;
-            background: #7f5af0;
+            background: #6c5ce7;
             color: white;
             cursor: pointer;
+            font-size: 16px;
+        }
+
+        button:hover {
+            background: #5a4bdc;
         }
 
         .card {
-            margin-top: 30px;
+            background: #2f2f4f;
             padding: 20px;
-            background: #1a1a2e;
-            border-radius: 20px;
+            border-radius: 12px;
+        }
+
+        .deployment-card {
+            background: #1f1f35;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 15px;
+        }
+
+        a {
+            color: #00d4ff;
+        }
+
+        hr {
+            border: 0;
+            height: 1px;
+            background: #444;
+            margin-top: 10px;
+        }
+
+        .empty {
+            text-align: center;
+            opacity: 0.7;
         }
     </style>
 </head>
+
 <body>
 
-<h1>🚀 SmartDeploy AI</h1>
+<div class="container">
 
-<input id="repoInput" placeholder="Enter GitHub Repo URL">
-<button onclick="deploy()">Deploy</button>
+    <!-- HEADER -->
+    <h1>🚀 SmartDeploy AI</h1>
 
-<div class="card">
-    <h2>📦 Deployments</h2>
-    <div id="deployments"></div>
+    <!-- DEPLOY INPUT -->
+    <div class="deploy-box">
+        <input id="repo" placeholder="Enter GitHub Repo URL (https://github.com/user/repo)" />
+        <button onclick="deployRepo()">Deploy</button>
+    </div>
+
+    <!-- DEPLOYMENTS LIST -->
+    <div class="card">
+        <h2>📦 Deployments</h2>
+        <div id="deployments" class="empty">
+            Loading deployments...
+        </div>
+    </div>
+
 </div>
 
+<!-- JS -->
 <script src="/static/dashboard.js"></script>
 
 </body>

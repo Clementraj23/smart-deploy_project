@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify, render_template
 import subprocess
 import os
 import random
+import shutil
 
 app = Flask(__name__)
 
@@ -19,7 +20,7 @@ def get_deployments():
     return jsonify(deployments)
 
 
-# ---------------- DEPLOY FUNCTION ----------------
+# ---------------- DEPLOY ----------------
 @app.route("/deploy", methods=["POST"])
 def deploy():
     data = request.json
@@ -28,40 +29,49 @@ def deploy():
     if not repo_url:
         return jsonify({"error": "No repo URL provided"}), 400
 
-    # Extract repo name
     name = repo_url.split("/")[-1].replace(".git", "")
     port = random.randint(5005, 5999)
 
     try:
-        # Remove old folder if exists
+        # 🔥 CLEAN OLD PROJECT
         if os.path.exists(name):
-            subprocess.run(["rm", "-rf", name])
+            shutil.rmtree(name)
 
-        # Clone repo
         subprocess.run(["git", "clone", repo_url], check=True)
 
-        dockerfile_path = f"{name}/Dockerfile"
+        project_path = name
+        dockerfile_path = os.path.join(project_path, "Dockerfile")
 
-        # 🔥 AUTO CREATE DOCKERFILE IF NOT PRESENT
+        # 🔥 AUTO CREATE DOCKERFILE (SMART)
         if not os.path.exists(dockerfile_path):
-            print("⚡ No Dockerfile found → creating one")
+            print("⚡ Creating Dockerfile automatically")
 
             with open(dockerfile_path, "w") as f:
                 f.write("""FROM python:3.9
 WORKDIR /app
 COPY . .
-RUN pip install flask
-CMD ["python", "app.py"]
+
+RUN pip install -r requirements.txt || pip install flask gunicorn
+
+EXPOSE 5000
+
+CMD ["gunicorn", "-b", "0.0.0.0:5000", "app:app"]
 """)
 
-        # Build Docker image
+        # 🔥 BUILD IMAGE
         subprocess.run([
-            "docker", "build", "-t", name, name
+            "docker", "build", "-t", name, project_path
         ], check=True)
 
         container_name = f"{name}_{port}"
 
-        # Run container
+        # 🔥 REMOVE OLD CONTAINER IF EXISTS
+        subprocess.run(
+            ["docker", "rm", "-f", container_name],
+            stderr=subprocess.DEVNULL
+        )
+
+        # 🔥 RUN CONTAINER
         subprocess.run([
             "docker", "run", "-d",
             "-p", f"{port}:5000",
