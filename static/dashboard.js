@@ -1,8 +1,45 @@
 const socket = io();
 
+// ---------------- CPU LIVE ----------------
+socket.on("cpu", (data) => {
+    document.getElementById("cpu").innerText = "CPU: " + data.cpu + "%";
+});
+
+// ---------------- ALERT ----------------
+socket.on("alert", (msg) => {
+    alert(msg);
+});
+
+// ---------------- LOAD DEPLOYMENTS ----------------
+async function loadDeployments() {
+    const res = await fetch("/deployments");
+    const data = await res.json();
+
+    const container = document.getElementById("deployments");
+    container.innerHTML = "";
+
+    data.forEach(d => {
+        const div = document.createElement("div");
+
+        div.innerHTML = `
+            <p><b>${d.name}</b></p>
+            <a href="${d.url}" target="_blank">${d.url}</a>
+            <pre>${d.logs}</pre>
+            <hr/>
+        `;
+
+        container.appendChild(div);
+    });
+}
+
 // ---------------- DEPLOY ----------------
 async function deployRepo() {
     const repo = document.getElementById("repo").value;
+
+    if (!repo) {
+        alert("Enter GitHub repo URL");
+        return;
+    }
 
     const res = await fetch("/deploy", {
         method: "POST",
@@ -16,46 +53,11 @@ async function deployRepo() {
 
     if (data.url) {
         alert("🚀 Deployed: " + data.url);
+        loadDeployments();
     } else {
         alert("❌ " + data.error);
     }
 }
 
-
-// ---------------- REALTIME EVENTS ----------------
-
-// CPU
-socket.on("cpu", (data) => {
-    document.getElementById("cpu").innerText = "CPU: " + data + "%";
-});
-
-// ALERT
-socket.on("alert", (msg) => {
-    alert(msg);
-});
-
-// NEW DEPLOY
-socket.on("new_deploy", (d) => {
-    addDeployment(d);
-});
-
-// LOGS
-socket.on("logs", (data) => {
-    document.getElementById("logs").innerText = data.logs;
-});
-
-
-// ---------------- UI ----------------
-function addDeployment(d) {
-    const container = document.getElementById("deployments");
-
-    const div = document.createElement("div");
-    div.className = "card";
-
-    div.innerHTML = `
-        <h3>${d.project}</h3>
-        <a href="${d.url}" target="_blank">${d.url}</a>
-    `;
-
-    container.appendChild(div);
-}
+// auto refresh
+setInterval(loadDeployments, 5000);

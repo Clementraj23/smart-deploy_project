@@ -1,6 +1,11 @@
-from flask import Flask, request, jsonify, render_template
+import os
+import time
+import threading
+import subprocess
+import psutil
+
+from flask import Flask, render_template, request, jsonify
 from flask_socketio import SocketIO
-import subprocess, os, random, shutil, psutil, time, threading
 
 app = Flask(__name__)
 socketio = SocketIO(app, cors_allowed_origins="*")
@@ -12,119 +17,79 @@ deployments = []
 def home():
     return render_template("dashboard.html")
 
+# ---------------- CPU API ----------------
+@app.route("/cpu")
+def cpu():
+    return jsonify({"cpu": psutil.cpu_percent()})
 
-# ---------------- GET DEPLOYMENTS ----------------
-@app.route("/deployments")
-def get_deployments():
-    return jsonify(deployments)
+# ---------------- BACKGROUND CPU ----------------
+def background_cpu():
+    while True:
+        cpu_value = psutil.cpu_percent()
+        socketio.emit("cpu", {"cpu": cpu_value})
 
+        if cpu_value > 70:
+            socketio.emit("alert", f"🔥 High CPU: {cpu_value}%")
 
-# ---------------- DEPLOY ----------------
+        time.sleep(3)
+
+# ---------------- DEPLOY FUNCTION ----------------
 @app.route("/deploy", methods=["POST"])
 def deploy():
-    data = request.json
-    repo_url = data.get("repo")
+    data = request.get_json()
+    repo = data.get("repo")
 
-    if not repo_url:
+    if not repo:
         return jsonify({"error": "No repo URL provided"}), 400
 
-    name = repo_url.split("/")[-1].replace(".git", "")
-    port = random.randint(5005, 5999)
+    name = repo.split("/")[-1].replace(".git", "")
+    port = 5000 + len(deployments) + 1
 
     try:
-        # clean old
+        # Remove old folder if exists
         if os.path.exists(name):
-            shutil.rmtree(name)
+            subprocess.run(["rm", "-rf", name])
 
-        subprocess.run(["git", "clone", repo_url], check=True)
+        # Clone repo
+        subprocess.run(["git", "clone", repo], check=True)
 
-        dockerfile_path = f"{name}/Dockerfile"
+        # Ensure Dockerfile exists
+        if not os.path.exists(f"{name}/Dockerfile"):
+            return jsonify({"error": "No Dockerfile found in repo"}), 400
 
-        # 🔥 auto dockerfile
-        if not os.path.exists(dockerfile_path):
-            with open(dockerfile_path, "w") as f:
-                f.write("""FROM python:3.9
-WORKDIR /app
-COPY . .
+        # Build Docker image
+        subprocess.run(["docker", "build", "-t", name, "."], cwd=name, check=True)
 
-RUN pip install -r requirements.txt || pip install flask gunicorn
+        # Remove old container if exists
+        subprocess.run(["docker", "rm", "-f", name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-EXPOSE 5000
-
-CMD ["gunicorn", "-b", "0.0.0.0:5000", "app:app"]
-""")
-
-        subprocess.run(["docker", "build", "-t", name, name], check=True)
-
-        container_name = f"{name}_{port}"
-
-        subprocess.run(["docker", "rm", "-f", container_name],
-                       stderr=subprocess.DEVNULL)
-
+        # Run container
         subprocess.run([
             "docker", "run", "-d",
             "-p", f"{port}:5000",
-            "--name", container_name,
+            "--name", name,
             name
         ], check=True)
 
-        url = f"http://13.126.46.108:{port}"
+        url = f"http://{request.host.split(':')[0]}:{port}"
 
-        deployment = {
-            "project": name,
+        deployments.append({
+            "name": name,
             "url": url,
-            "container": container_name,
-            "logs": "🚀 Running"
-        }
-
-        deployments.append(deployment)
-
-        # 🔥 realtime push
-        socketio.emit("new_deploy", deployment)
+            "logs": "🚀 Container started successfully"
+        })
 
         return jsonify({"url": url})
 
     except Exception as e:
         return jsonify({"error": str(e)})
 
-
-# ---------------- CPU MONITOR ----------------
-def monitor_cpu():
-    while True:
-        cpu = psutil.cpu_percent(interval=2)
-
-        socketio.emit("cpu", cpu)
-
-        if cpu > 70:
-            socketio.emit("alert", f"🔥 High CPU Usage: {cpu}%")
-
-        time.sleep(2)
-
-
-# ---------------- LOG STREAM ----------------
-def stream_logs():
-    while True:
-        for d in deployments:
-            try:
-                logs = subprocess.getoutput(
-                    f"docker logs {d['container']} --tail 10"
-                )
-
-                socketio.emit("logs", {
-                    "project": d["project"],
-                    "logs": logs
-                })
-            except:
-                pass
-
-        time.sleep(4)
-
-
-# ---------------- START THREADS ----------------
-threading.Thread(target=monitor_cpu, daemon=True).start()
-threading.Thread(target=stream_logs, daemon=True).start()
-
+# ---------------- GET DEPLOYMENTS ----------------
+@app.route("/deployments")
+def get_deployments():
+    return jsonify(deployments)
 
 # ---------------- MAIN ----------------
 if __name__ == "__main__":
+    threading.Thread(target=background_cpu, daemon=True).start()
     socketio.run(app, host="0.0.0.0", port=5003)
