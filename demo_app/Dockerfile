@@ -1,2 +1,11 @@
-FROM nginx:alpine
-COPY ./demo_app /usr/share/nginx/html
+FROM python:3.9
+
+WORKDIR /app
+
+COPY . .
+
+RUN pip install flask
+
+EXPOSE 5000
+
+CMD ["python", "app.py"]

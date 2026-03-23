@@ -1,42 +1,52 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>SmartDeploy</title>
-    <link rel="stylesheet" href="/static/style.css">
+    <title>SmartDeploy AI</title>
+    <style>
+        body {
+            background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+            color: white;
+            font-family: "Poppins", sans-serif;
+            text-align: center;
+            padding: 40px;
+        }
+
+        input {
+            padding: 10px;
+            width: 300px;
+            border-radius: 10px;
+            border: none;
+        }
+
+        button {
+            padding: 10px 20px;
+            border-radius: 10px;
+            border: none;
+            background: #7f5af0;
+            color: white;
+            cursor: pointer;
+        }
+
+        .card {
+            margin-top: 30px;
+            padding: 20px;
+            background: #1a1a2e;
+            border-radius: 20px;
+        }
+    </style>
 </head>
 <body>
 
-<h1>🚀 SmartDeploy AI DevOps</h1>
+<h1>🚀 SmartDeploy AI</h1>
 
-<div class="card">
-    <input id="project" placeholder="Project Name"/>
-    <button onclick="deploy()">Deploy</button>
-</div>
+<input id="repoInput" placeholder="Enter GitHub Repo URL">
+<button onclick="deploy()">Deploy</button>
 
 <div class="card">
     <h2>📦 Deployments</h2>
     <div id="deployments"></div>
 </div>
 
-<div class="grid">
-    <div class="card">
-        <h2>📜 Live Logs</h2>
-        <pre id="logs"></pre>
-    </div>
-
-    <div class="card">
-        <h2>🚨 Alerts</h2>
-        <div id="alerts"></div>
-    </div>
-</div>
-
-<div class="card">
-    <h2>📊 CPU Usage</h2>
-    <canvas id="cpuChart"></canvas>
-</div>
-
-<script src="https://cdn.socket.io/4.5.0/socket.io.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="/static/dashboard.js"></script>
 
 </body>

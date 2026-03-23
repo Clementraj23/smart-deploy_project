@@ -1,58 +1,85 @@
 from flask import Flask, render_template, request, jsonify
 from flask_socketio import SocketIO
-import docker
-import threading
-import psutil
+import subprocess
+import os
 import random
+import threading
+import time
 
 app = Flask(__name__)
 socketio = SocketIO(app, cors_allowed_origins="*")
 
-client = docker.from_env()
-
 deployments = []
 
-# ---------------- DASHBOARD ----------------
+# ---------------- HOME ----------------
 @app.route("/")
-def index():
+def home():
     return render_template("dashboard.html")
 
-
-# ---------------- DEPLOY ----------------
+# ---------------- DEPLOY FUNCTION ----------------
 @app.route("/deploy", methods=["POST"])
 def deploy():
-    project = request.form.get("project")
+    data = request.json
+    repo_url = data.get("repo")
+
+    if not repo_url:
+        return jsonify({"error": "No repo provided"}), 400
+
+    name = repo_url.split("/")[-1].replace(".git", "")
+    port = random.randint(5005, 5999)
 
     try:
-        # Build image
-        image, logs = client.images.build(path=".", dockerfile="Dockerfile.demo", tag=project)
+        # Remove old project if exists
+        if os.path.exists(name):
+            subprocess.run(["rm", "-rf", name])
 
-        # Run container (random port)
-        container = client.containers.run(
-            project,
-            detach=True,
-            ports={'80/tcp': None}
-        )
+        # Clone repo
+        subprocess.run(["git", "clone", repo_url], check=True)
 
-        container.reload()
-        port = container.attrs['NetworkSettings']['Ports']['80/tcp'][0]['HostPort']
+        # Detect Dockerfile location
+        docker_path = None
+
+        if os.path.exists(f"{name}/Dockerfile"):
+            docker_path = name
+        elif os.path.exists(f"{name}/demo_app/Dockerfile"):
+            docker_path = f"{name}/demo_app"
+        else:
+            return jsonify({
+                "error": "❌ No Dockerfile found in repo"
+            })
+
+        # Build Docker image
+        subprocess.run([
+            "docker", "build", "-t", name, docker_path
+        ], check=True)
+
+        # Run container
+        container_name = f"{name}_{port}"
+
+        subprocess.run([
+            "docker", "run", "-d",
+            "-p", f"{port}:5000",
+            "--name", container_name,
+            name
+        ], check=True)
+
+        url = f"http://13.126.46.108:{port}"
 
         deployments.append({
-            "project": project,
-            "id": container.id,
-            "port": port
+            "project": name,
+            "url": url,
+            "logs": "✅ Deployment successful"
         })
-
-        # Start logs streaming
-        threading.Thread(target=stream_logs, args=(container.id,)).start()
 
         return jsonify({
-            "status": "success",
-            "url": f"http://13.126.46.108:{port}"
+            "message": "🚀 Deployment successful",
+            "url": url
         })
 
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    except subprocess.CalledProcessError as e:
+        return jsonify({
+            "error": f"❌ Deploy failed: {str(e)}"
+        })
 
 
 # ---------------- GET DEPLOYMENTS ----------------
@@ -61,86 +88,35 @@ def get_deployments():
     return jsonify(deployments)
 
 
-# ---------------- LOGS ----------------
-def stream_logs(container_id):
-    try:
-        container = client.containers.get(container_id)
-        for log in container.logs(stream=True, follow=True):
-            socketio.emit("logs", log.decode("utf-8"))
-    except Exception as e:
-        socketio.emit("logs", f"Error: {str(e)}")
-
-
-# ---------------- CPU + ALERTS ----------------
-@app.route("/cpu")
-def cpu():
-    cpu = psutil.cpu_percent(interval=1)
-
-    socketio.emit("cpu", cpu)
-
-    # Lower threshold for demo
-    if cpu > 5:
-        socketio.emit("alert", f"⚠️ High CPU Usage: {cpu}%")
-
-    return jsonify({"cpu": cpu})
-
-
-# ---------------- START/STOP ----------------
-@app.route("/start/<id>")
-def start(id):
-    client.containers.get(id).start()
-    return "started"
-
-
-@app.route("/stop/<id>")
-def stop(id):
-    client.containers.get(id).stop()
-    return "stopped"
-
-
-@app.route("/delete/<id>")
-def delete(id):
-    client.containers.get(id).remove(force=True)
-    return "deleted"
-
-
-# ---------------- GITHUB WEBHOOK ----------------
+# ---------------- WEBHOOK (AUTO DEPLOY) ----------------
 @app.route("/webhook", methods=["POST"])
 def webhook():
     data = request.json
 
-    if data.get("ref") == "refs/heads/main":
-        # Auto deploy on push
-        deploy_auto("auto-app")
-
-    return "OK"
-
-
-def deploy_auto(name):
     try:
-        image, _ = client.images.build(path=".", dockerfile="Dockerfile.demo", tag=name)
+        repo = data["repository"]["clone_url"]
+    except:
+        return "Invalid payload", 400
 
-        container = client.containers.run(
-            name,
-            detach=True,
-            ports={'80/tcp': None}
-        )
+    print("🚀 GitHub push detected:", repo)
 
-        container.reload()
-        port = container.attrs['NetworkSettings']['Ports']['80/tcp'][0]['HostPort']
+    with app.test_request_context(json={"repo": repo}):
+        return deploy()
 
-        deployments.append({
-            "project": name,
-            "id": container.id,
-            "port": port
-        })
 
-        threading.Thread(target=stream_logs, args=(container.id,)).start()
+# ---------------- CPU + ALERTS ----------------
+def background_cpu():
+    while True:
+        value = random.randint(10, 90)
+        socketio.emit("cpu", value)
 
-    except Exception as e:
-        print(e)
+        if value > 70:
+            socketio.emit("alert", f"🔥 High CPU: {value}%")
+
+        time.sleep(3)
 
 
 # ---------------- MAIN ----------------
 if __name__ == "__main__":
+    threading.Thread(target=background_cpu).start()
     socketio.run(app, host="0.0.0.0", port=5003)
