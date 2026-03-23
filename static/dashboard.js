@@ -1,131 +1,136 @@
-// ---------------- SOCKET ----------------
-const socket = io("http://13.126.46.108:5003", {
-    transports: ["websocket"]
+// ================= SOCKET CONNECTION =================
+const socket = io({
+    transports: ["websocket", "polling"]
 });
 
-// DEBUG
-socket.on("connect", () => {
-    console.log("✅ Connected");
-});
+// ================= DOM ELEMENTS =================
+const cpuText = document.getElementById("cpu");
+const logsBox = document.getElementById("logs");
+const deployList = document.getElementById("deployments");
 
-socket.on("connect_error", (err) => {
-    console.error("❌ Connection failed:", err);
-});
-
-
-// ---------------- CHART ----------------
+// ================= CPU GRAPH =================
 const ctx = document.getElementById("cpuChart").getContext("2d");
 
+let cpuData = [];
 let labels = [];
-let dataPoints = [];
 
-const chart = new Chart(ctx, {
+const cpuChart = new Chart(ctx, {
     type: "line",
     data: {
         labels: labels,
         datasets: [{
-            label: "CPU %",
-            data: dataPoints,
+            label: "CPU Usage (%)",
+            data: cpuData,
             borderWidth: 2,
             tension: 0.3
         }]
     },
     options: {
+        responsive: true,
         animation: false,
         scales: {
             y: {
-                min: 0,
+                beginAtZero: true,
                 max: 100
             }
         }
     }
 });
 
+// ================= SOCKET EVENTS =================
 
-// ---------------- CPU EVENT ----------------
-socket.on("cpu", (value) => {
-    console.log("CPU:", value);
-
-    const time = new Date().toLocaleTimeString();
-
-    labels.push(time);
-    dataPoints.push(value);
-
-    if (labels.length > 20) {
-        labels.shift();
-        dataPoints.shift();
-    }
-
-    chart.update();
-
-    document.getElementById("cpuText").innerText = `CPU: ${value}%`;
+// 🔌 Connected
+socket.on("connect", () => {
+    console.log("✅ Connected to server");
 });
 
+// 📊 CPU UPDATE
+socket.on("cpu", (value) => {
+    cpuText.innerText = `CPU: ${value}%`;
 
-// ---------------- ALERT ----------------
+    // Update graph
+    if (cpuData.length > 20) {
+        cpuData.shift();
+        labels.shift();
+    }
+
+    cpuData.push(value);
+    labels.push("");
+
+    cpuChart.update();
+});
+
+// 🚨 ALERT
 socket.on("alert", (msg) => {
     alert(msg);
 });
 
-
-// ---------------- LOGS ----------------
-socket.on("logs", (msg) => {
-    const box = document.getElementById("logs");
-    box.innerText += msg;
-    box.scrollTop = box.scrollHeight;
+// 📜 LOG STREAM
+socket.on("log", (msg) => {
+    logsBox.innerText += msg + "\n";
+    logsBox.scrollTop = logsBox.scrollHeight;
 });
 
-
-// ---------------- DEPLOY ----------------
+// ================= DEPLOY FUNCTION =================
 async function deployRepo() {
     const repo = document.getElementById("repo").value;
 
     if (!repo) {
-        alert("Enter repo URL");
+        alert("Enter GitHub Repo URL");
         return;
     }
 
-    const res = await fetch("/deploy", {
-        method: "POST",
-        headers: {
-            "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ repo })
-    });
+    try {
+        const res = await fetch("/deploy", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({ repo })
+        });
 
-    const data = await res.json();
+        const data = await res.json();
 
-    if (data.error) {
-        alert(data.error);
-    } else {
-        alert("🚀 Deployed!\n" + data.url);
-        loadDeployments();
+        if (data.error) {
+            alert(data.error);
+        } else {
+            alert("🚀 Deployed: " + data.url);
+            loadDeployments();
+        }
+
+    } catch (err) {
+        console.error(err);
+        alert("Deployment failed");
     }
 }
 
-
-// ---------------- LOAD DEPLOYMENTS ----------------
+// ================= LOAD DEPLOYMENTS =================
 async function loadDeployments() {
-    const res = await fetch("/deployments");
-    const data = await res.json();
+    try {
+        const res = await fetch("/deployments");
+        const data = await res.json();
 
-    const div = document.getElementById("deployments");
-    div.innerHTML = "";
+        deployList.innerHTML = "";
 
-    data.forEach(d => {
-        const el = document.createElement("div");
+        data.forEach(d => {
+            const div = document.createElement("div");
 
-        el.innerHTML = `
-            <b>${d.name}</b><br>
-            <a href="${d.url}" target="_blank">${d.url}</a>
-            <hr>
-        `;
+            div.innerHTML = `
+                <p><b>${d.repo}</b></p>
+                <a href="${d.url}" target="_blank">${d.url}</a>
+                <hr/>
+            `;
 
-        div.appendChild(el);
-    });
+            deployList.appendChild(div);
+        });
+
+    } catch (err) {
+        console.error("Error loading deployments", err);
+    }
 }
 
-
-// ---------------- AUTO REFRESH ----------------
+// ================= AUTO REFRESH =================
 setInterval(loadDeployments, 5000);
+
+// ================= INITIAL LOAD =================
 loadDeployments();
