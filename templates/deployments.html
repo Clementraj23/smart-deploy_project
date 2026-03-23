@@ -1,0 +1,20 @@
+<h1>Deployment Result</h1>
+
+{% if aws %}
+<h3>Cloud Deployment</h3>
+
+<p>
+App running at:
+<a href="http://{{aws.ip}}" target="_blank">
+http://{{aws.ip}}
+</a>
+</p>
+{% endif %}
+
+<h3>Local Docker Containers</h3>
+
+<ul>
+{% for d in deployments %}
+<li>{{d.project}} → {{d.container_data}}</li>
+{% endfor %}
+</ul>

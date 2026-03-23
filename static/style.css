@@ -1,0 +1,32 @@
+body {
+    background: #0f172a;
+    color: white;
+    font-family: sans-serif;
+    padding: 20px;
+}
+
+.card {
+    background: #1e293b;
+    padding: 20px;
+    margin: 15px 0;
+    border-radius: 10px;
+}
+
+button {
+    background: #22c55e;
+    border: none;
+    padding: 10px;
+    color: white;
+    cursor: pointer;
+}
+
+.grid {
+    display: flex;
+    gap: 20px;
+}
+
+pre {
+    background: black;
+    height: 200px;
+    overflow: auto;
+}

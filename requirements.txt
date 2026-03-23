@@ -1,0 +1,9 @@
+Flask
+flask-socketio
+eventlet
+docker
+psutil
+paramiko
+boto3
+pandas
+scikit-learn

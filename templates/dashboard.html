@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>SmartDeploy</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<h1>🚀 SmartDeploy AI DevOps</h1>
+
+<div class="card">
+    <input id="project" placeholder="Project Name"/>
+    <button onclick="deploy()">Deploy</button>
+</div>
+
+<div class="card">
+    <h2>📦 Deployments</h2>
+    <div id="deployments"></div>
+</div>
+
+<div class="grid">
+    <div class="card">
+        <h2>📜 Live Logs</h2>
+        <pre id="logs"></pre>
+    </div>
+
+    <div class="card">
+        <h2>🚨 Alerts</h2>
+        <div id="alerts"></div>
+    </div>
+</div>
+
+<div class="card">
+    <h2>📊 CPU Usage</h2>
+    <canvas id="cpuChart"></canvas>
+</div>
+
+<script src="https://cdn.socket.io/4.5.0/socket.io.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="/static/dashboard.js"></script>
+
+</body>
+</html>
