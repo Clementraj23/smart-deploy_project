@@ -1,3 +1,6 @@
+import eventlet
+eventlet.monkey_patch()
+
 import os
 import subprocess
 import time
@@ -20,18 +23,15 @@ if not os.path.exists(DEPLOY_DIR):
 
 deployments = []
 
-
 # ---------------- SOCKET DEBUG ----------------
 @socketio.on("connect")
 def handle_connect():
     print("🔥 CLIENT CONNECTED")
 
-
 # ---------------- HOME ----------------
 @app.route("/")
 def home():
     return render_template("dashboard.html")
-
 
 # ---------------- DEPLOY ----------------
 @app.route("/deploy", methods=["POST"])
@@ -46,14 +46,11 @@ def deploy():
         repo_name = repo.split("/")[-1].replace(".git", "")
         project_path = os.path.join(DEPLOY_DIR, repo_name)
 
-        # remove old
         if os.path.exists(project_path):
             shutil.rmtree(project_path)
 
-        # clone repo
         subprocess.run(["git", "clone", repo, project_path], check=True)
 
-        # check Dockerfile
         dockerfile = os.path.join(project_path, "Dockerfile")
         if not os.path.exists(dockerfile):
             return jsonify({"error": "❌ No Dockerfile found in repo"}), 400
@@ -61,16 +58,13 @@ def deploy():
         image_name = f"{repo_name}_img"
         container_name = f"{repo_name}_{random.randint(1000,9999)}"
 
-        # build image
         subprocess.run(
             ["docker", "build", "-t", image_name, project_path],
             check=True
         )
 
-        # random port
         port = random.randint(5001, 5999)
 
-        # run container
         subprocess.run([
             "docker", "run", "-d",
             "-p", f"{port}:5000",
@@ -92,12 +86,10 @@ def deploy():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-
 # ---------------- GET DEPLOYMENTS ----------------
 @app.route("/deployments")
 def get_deployments():
     return jsonify(deployments)
-
 
 # ---------------- WEBHOOK ----------------
 @app.route("/webhook", methods=["POST"])
@@ -109,27 +101,22 @@ def webhook():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-
 # ---------------- CPU MONITOR ----------------
 def cpu_monitor():
     while True:
         cpu = psutil.cpu_percent(interval=1)
-        print("CPU:", cpu)
-
         socketio.emit("cpu", cpu)
 
         if cpu > 50:
             socketio.emit("alert", f"⚠️ High CPU: {cpu}%")
 
-        time.sleep(2)
-
+        socketio.sleep(2)   # ✅ FIXED (was time.sleep)
 
 # ---------------- LOG STREAM ----------------
 def log_stream():
     while True:
         socketio.emit("logs", "📜 System running...\n")
-        time.sleep(5)
-
+        socketio.sleep(5)   # ✅ FIXED (was time.sleep)
 
 # ---------------- MAIN ----------------
 if __name__ == "__main__":

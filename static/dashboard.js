@@ -1,127 +1,30 @@
-// ================= SOCKET CONNECTION =================
-const socket = io({
-    transports: ["websocket", "polling"]
-});
+// ✅ FIXED SOCKET CONNECTION
+const socket = io(window.location.origin);
 
-// ================= DOM ELEMENTS =================
-const cpuText = document.getElementById("cpu");
-const logsBox = document.getElementById("logs");
-const deployList = document.getElementById("deployments");
-
-// ================= CPU GRAPH =================
-const ctx = document.getElementById("cpuChart").getContext("2d");
-
-let cpuData = [];
-let labels = [];
-
-const cpuChart = new Chart(ctx, {
-    type: "line",
-    data: {
-        labels: labels,
-        datasets: [{
-            label: "CPU Usage (%)",
-            data: cpuData,
-            borderWidth: 2,
-            tension: 0.3
-        }]
-    },
-    options: {
-        responsive: true,
-        animation: false,
-        scales: {
-            y: {
-                beginAtZero: true,
-                max: 100
-            }
-        }
-    }
-});
-
-// ================= SOCKET EVENTS =================
-
-// 🔌 Connected
-socket.on("connect", () => {
-    console.log("✅ Connected to server");
-});
-
-// 📊 CPU UPDATE
-socket.on("cpu", (value) => {
-    cpuText.innerText = `CPU: ${value}%`;
-
-    // Update graph
-    if (cpuData.length > 20) {
-        cpuData.shift();
-        labels.shift();
-    }
-
-    cpuData.push(value);
-    labels.push("");
-
-    cpuChart.update();
-});
-
-// 🚨 ALERT
-socket.on("alert", (msg) => {
-    alert(msg);
-});
-
-// 📜 LOG STREAM
-socket.on("log", (msg) => {
-    logsBox.innerText += msg + "\n";
-    logsBox.scrollTop = logsBox.scrollHeight;
-});
-
-// ================= DEPLOY FUNCTION =================
-async function deployRepo() {
+// ---------------- DEPLOY ----------------
+async function deploy() {
     const repo = document.getElementById("repo").value;
 
-    if (!repo) {
-        alert("Enter GitHub Repo URL");
-        return;
-    }
-
-    try {
-        const res = await fetch("/deploy", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({ repo })
-        });
-
-        const data = await res.json();
-
-        if (data.error) {
-            alert(data.error);
-        } else {
-            alert("🚀 Deployed: " + data.url);
-            loadDeployments();
-        }
-
-    } catch (err) {
-        console.error(err);
-        alert("Deployment failed");
-    }
+    await fetch("/deploy", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ repo })
+    });
 }
 
-// ================= LOAD DEPLOYMENTS =================
+// ---------------- LOAD DEPLOYMENTS ----------------
 async function loadDeployments() {
     try {
         const res = await fetch("/deployments");
         const data = await res.json();
 
-        deployList.innerHTML = "";
+        const container = document.getElementById("deployments");
+        container.innerHTML = "";
 
         data.forEach(d => {
-            const div = document.createElement("div");
-
-            div.innerHTML = `
-                <p><b>${d.repo}</b></p>
-                <a href="${d.url}" target="_blank">${d.url}</a>
-                <hr/>
-            `;
-
-            deployList.appendChild(div);
+            const el = document.createElement("div");
+            el.innerHTML = `<a href="${d.url}" target="_blank">${d.name}</a>`;
+            container.appendChild(el);
         });
 
     } catch (err) {
@@ -129,8 +32,26 @@ async function loadDeployments() {
     }
 }
 
-// ================= AUTO REFRESH =================
+// ---------------- SOCKET EVENTS ----------------
+socket.on("cpu", (data) => {
+    console.log("CPU:", data);
+});
+
+socket.on("logs", (msg) => {
+    const logs = document.getElementById("logs");
+    logs.textContent += msg;
+    logs.scrollTop = logs.scrollHeight;
+});
+
+socket.on("alert", (msg) => {
+    const alerts = document.getElementById("alerts");
+    const el = document.createElement("div");
+    el.textContent = msg;
+    alerts.appendChild(el);
+});
+
+// ---------------- AUTO REFRESH ----------------
 setInterval(loadDeployments, 5000);
 
-// ================= INITIAL LOAD =================
+// ---------------- INITIAL LOAD ----------------
 loadDeployments();
