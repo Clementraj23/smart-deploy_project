@@ -1,37 +1,31 @@
 import os
-import time
-import threading
 import subprocess
+import time
+import random
+import shutil
 import psutil
 
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, request, jsonify, render_template
 from flask_socketio import SocketIO
 
+# ---------------- CONFIG ----------------
 app = Flask(__name__)
-socketio = SocketIO(app, cors_allowed_origins="*")
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode="eventlet")
+
+BASE_DIR = os.getcwd()
+DEPLOY_DIR = os.path.join(BASE_DIR, "deployments")
+
+if not os.path.exists(DEPLOY_DIR):
+    os.makedirs(DEPLOY_DIR)
 
 deployments = []
+
 
 # ---------------- HOME ----------------
 @app.route("/")
 def home():
     return render_template("dashboard.html")
 
-# ---------------- CPU API ----------------
-@app.route("/cpu")
-def cpu():
-    return jsonify({"cpu": psutil.cpu_percent()})
-
-# ---------------- BACKGROUND CPU ----------------
-def background_cpu():
-    while True:
-        cpu_value = psutil.cpu_percent()
-        socketio.emit("cpu", {"cpu": cpu_value})
-
-        if cpu_value > 70:
-            socketio.emit("alert", f"🔥 High CPU: {cpu_value}%")
-
-        time.sleep(3)
 
 # ---------------- DEPLOY FUNCTION ----------------
 @app.route("/deploy", methods=["POST"])
@@ -40,56 +34,109 @@ def deploy():
     repo = data.get("repo")
 
     if not repo:
-        return jsonify({"error": "No repo URL provided"}), 400
-
-    name = repo.split("/")[-1].replace(".git", "")
-    port = 5000 + len(deployments) + 1
+        return jsonify({"error": "Repo URL missing"}), 400
 
     try:
-        # Remove old folder if exists
-        if os.path.exists(name):
-            subprocess.run(["rm", "-rf", name])
+        repo_name = repo.split("/")[-1].replace(".git", "")
+        project_path = os.path.join(DEPLOY_DIR, repo_name)
 
-        # Clone repo
-        subprocess.run(["git", "clone", repo], check=True)
+        # remove old folder
+        if os.path.exists(project_path):
+            shutil.rmtree(project_path)
 
-        # Ensure Dockerfile exists
-        if not os.path.exists(f"{name}/Dockerfile"):
-            return jsonify({"error": "No Dockerfile found in repo"}), 400
+        # clone repo
+        subprocess.run(["git", "clone", repo, project_path], check=True)
 
-        # Build Docker image
-        subprocess.run(["docker", "build", "-t", name, "."], cwd=name, check=True)
+        # detect dockerfile
+        dockerfile_path = os.path.join(project_path, "Dockerfile")
+        if not os.path.exists(dockerfile_path):
+            return jsonify({"error": "❌ No Dockerfile found in repo"}), 400
 
-        # Remove old container if exists
-        subprocess.run(["docker", "rm", "-f", name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        # build image
+        image_name = f"{repo_name.lower()}_img"
+        subprocess.run(
+            ["docker", "build", "-t", image_name, project_path],
+            check=True
+        )
 
-        # Run container
+        # generate random port
+        port = random.randint(5001, 5999)
+
+        # run container
+        container_name = f"{repo_name.lower()}_{port}"
+
         subprocess.run([
             "docker", "run", "-d",
             "-p", f"{port}:5000",
-            "--name", name,
-            name
+            "--name", container_name,
+            image_name
         ], check=True)
 
-        url = f"http://{request.host.split(':')[0]}:{port}"
+        url = f"http://13.126.46.108:{port}"
 
         deployments.append({
-            "name": name,
+            "name": repo_name,
             "url": url,
-            "logs": "🚀 Container started successfully"
+            "container": container_name
         })
+
+        # emit log
+        socketio.emit("logs", f"\n🚀 Deployed {repo_name} at {url}\n")
 
         return jsonify({"url": url})
 
-    except Exception as e:
-        return jsonify({"error": str(e)})
+    except subprocess.CalledProcessError as e:
+        return jsonify({"error": str(e)}), 500
+
 
 # ---------------- GET DEPLOYMENTS ----------------
 @app.route("/deployments")
 def get_deployments():
     return jsonify(deployments)
 
+
+# ---------------- WEBHOOK AUTO DEPLOY ----------------
+@app.route("/webhook", methods=["POST"])
+def webhook():
+    data = request.json
+
+    try:
+        repo = data["repository"]["clone_url"]
+
+        # reuse deploy logic
+        return deploy()
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+# ---------------- CPU MONITOR ----------------
+def cpu_monitor():
+    while True:
+        cpu = psutil.cpu_percent()
+
+        # emit cpu
+        socketio.emit("cpu", cpu)
+
+        # alert
+        if cpu > 50:
+            socketio.emit("alert", f"⚠️ High CPU: {cpu}%")
+
+        time.sleep(2)
+
+
+# ---------------- LOG SIMULATION ----------------
+def log_stream():
+    while True:
+        socketio.emit("logs", f"📜 Running... CPU stable\n")
+        time.sleep(5)
+
+
 # ---------------- MAIN ----------------
 if __name__ == "__main__":
-    threading.Thread(target=background_cpu, daemon=True).start()
+    print("🚀 Starting SmartDeploy AI...")
+
+    socketio.start_background_task(cpu_monitor)
+    socketio.start_background_task(log_stream)
+
     socketio.run(app, host="0.0.0.0", port=5003)

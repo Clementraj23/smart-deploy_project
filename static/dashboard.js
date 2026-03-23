@@ -1,45 +1,8 @@
 const socket = io();
 
-// ---------------- CPU LIVE ----------------
-socket.on("cpu", (data) => {
-    document.getElementById("cpu").innerText = "CPU: " + data.cpu + "%";
-});
-
-// ---------------- ALERT ----------------
-socket.on("alert", (msg) => {
-    alert(msg);
-});
-
-// ---------------- LOAD DEPLOYMENTS ----------------
-async function loadDeployments() {
-    const res = await fetch("/deployments");
-    const data = await res.json();
-
-    const container = document.getElementById("deployments");
-    container.innerHTML = "";
-
-    data.forEach(d => {
-        const div = document.createElement("div");
-
-        div.innerHTML = `
-            <p><b>${d.name}</b></p>
-            <a href="${d.url}" target="_blank">${d.url}</a>
-            <pre>${d.logs}</pre>
-            <hr/>
-        `;
-
-        container.appendChild(div);
-    });
-}
-
 // ---------------- DEPLOY ----------------
-async function deployRepo() {
+async function deploy() {
     const repo = document.getElementById("repo").value;
-
-    if (!repo) {
-        alert("Enter GitHub repo URL");
-        return;
-    }
 
     const res = await fetch("/deploy", {
         method: "POST",
@@ -55,9 +18,86 @@ async function deployRepo() {
         alert("🚀 Deployed: " + data.url);
         loadDeployments();
     } else {
-        alert("❌ " + data.error);
+        alert(data.error);
     }
 }
+
+// ---------------- DEPLOYMENTS ----------------
+async function loadDeployments() {
+    const res = await fetch("/deployments");
+    const data = await res.json();
+
+    const div = document.getElementById("deployments");
+    div.innerHTML = "";
+
+    data.forEach(d => {
+        div.innerHTML += `
+            <p>
+                📦 ${d.name} →
+                <a href="${d.url}" target="_blank">${d.url}</a>
+            </p>
+        `;
+    });
+}
+
+// ---------------- CPU GRAPH ----------------
+const ctx = document.getElementById("cpuChart").getContext("2d");
+
+const cpuData = {
+    labels: [],
+    datasets: [{
+        label: "CPU %",
+        data: [],
+        borderWidth: 2,
+        tension: 0.3
+    }]
+};
+
+const cpuChart = new Chart(ctx, {
+    type: "line",
+    data: cpuData,
+    options: {
+        responsive: true,
+        scales: {
+            y: {
+                min: 0,
+                max: 100
+            }
+        }
+    }
+});
+
+// ---------------- SOCKET EVENTS ----------------
+
+// CPU update → graph
+socket.on("cpu", (cpu) => {
+
+    const time = new Date().toLocaleTimeString();
+
+    cpuData.labels.push(time);
+    cpuData.datasets[0].data.push(cpu);
+
+    // keep last 20 points
+    if (cpuData.labels.length > 20) {
+        cpuData.labels.shift();
+        cpuData.datasets[0].data.shift();
+    }
+
+    cpuChart.update();
+});
+
+// ALERT
+socket.on("alert", (msg) => {
+    const alertBox = document.getElementById("alerts");
+    alertBox.innerHTML += `<p>${msg}</p>`;
+});
+
+// LOGS
+socket.on("logs", (log) => {
+    const logBox = document.getElementById("logs");
+    logBox.innerText += log;
+    logBox.scrollTop = logBox.scrollHeight;
+});
 
 // auto refresh
 setInterval(loadDeployments, 5000);

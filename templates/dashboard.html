@@ -2,21 +2,52 @@
 <html>
 <head>
     <title>SmartDeploy AI</title>
+    <link rel="stylesheet" href="/static/style.css">
 </head>
-<body style="background:#1e1e2f;color:white;font-family:sans-serif;text-align:center;">
+<body>
 
-    <h1>🚀 SmartDeploy AI</h1>
+<h1>🚀 SmartDeploy AI</h1>
 
-    <input id="repo" placeholder="GitHub Repo URL" style="width:300px;padding:10px;">
-    <button onclick="deployRepo()">Deploy</button>
+<div class="card">
+    <input id="repo" placeholder="GitHub Repo URL"/>
+    <button onclick="deploy()">Deploy</button>
+</div>
 
-    <h2 id="cpu">CPU: Loading...</h2>
+<div class="grid">
 
-    <h2>📦 Deployments</h2>
-    <div id="deployments"></div>
+    <div class="card">
+        <h2>📦 Deployments</h2>
+        <div id="deployments"></div>
+    </div>
 
-    <script src="https://cdn.socket.io/4.0.1/socket.io.min.js"></script>
-    <script src="/static/dashboard.js"></script>
+    <div class="card">
+        <h2>📜 Logs</h2>
+        <pre id="logs"></pre>
+    </div>
+
+</div>
+
+<div class="grid">
+
+    <div class="card">
+        <h2>🚨 Alerts</h2>
+        <div id="alerts"></div>
+    </div>
+
+    <div class="card">
+        <h2>📊 CPU Usage (Live)</h2>
+        <canvas id="cpuChart"></canvas>
+    </div>
+
+</div>
+
+<!-- SOCKET -->
+<script src="https://cdn.socket.io/4.5.0/socket.io.min.js"></script>
+
+<!-- CHART -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<script src="/static/dashboard.js"></script>
 
 </body>
 </html>
