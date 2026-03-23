@@ -1,28 +1,36 @@
-// ---------------- SOCKET CONNECTION ----------------
+// ---------------- SOCKET ----------------
 const socket = io("http://13.126.46.108:5003", {
     transports: ["websocket"]
 });
 
+// DEBUG
+socket.on("connect", () => {
+    console.log("✅ Connected");
+});
 
-// ---------------- CPU GRAPH SETUP ----------------
+socket.on("connect_error", (err) => {
+    console.error("❌ Connection failed:", err);
+});
+
+
+// ---------------- CHART ----------------
 const ctx = document.getElementById("cpuChart").getContext("2d");
 
-let cpuData = [];
 let labels = [];
+let dataPoints = [];
 
-const cpuChart = new Chart(ctx, {
+const chart = new Chart(ctx, {
     type: "line",
     data: {
         labels: labels,
         datasets: [{
-            label: "CPU Usage %",
-            data: cpuData,
+            label: "CPU %",
+            data: dataPoints,
             borderWidth: 2,
             tension: 0.3
         }]
     },
     options: {
-        responsive: true,
         animation: false,
         scales: {
             y: {
@@ -34,20 +42,21 @@ const cpuChart = new Chart(ctx, {
 });
 
 
-// ---------------- CPU LIVE UPDATE ----------------
+// ---------------- CPU EVENT ----------------
 socket.on("cpu", (value) => {
-    const now = new Date().toLocaleTimeString();
+    console.log("CPU:", value);
 
-    labels.push(now);
-    cpuData.push(value);
+    const time = new Date().toLocaleTimeString();
 
-    // keep last 20 points
+    labels.push(time);
+    dataPoints.push(value);
+
     if (labels.length > 20) {
         labels.shift();
-        cpuData.shift();
+        dataPoints.shift();
     }
 
-    cpuChart.update();
+    chart.update();
 
     document.getElementById("cpuText").innerText = `CPU: ${value}%`;
 });
@@ -59,16 +68,15 @@ socket.on("alert", (msg) => {
 });
 
 
-// ---------------- LOG STREAM ----------------
-socket.on("logs", (log) => {
-    const logBox = document.getElementById("logs");
-
-    logBox.innerText += log;
-    logBox.scrollTop = logBox.scrollHeight;
+// ---------------- LOGS ----------------
+socket.on("logs", (msg) => {
+    const box = document.getElementById("logs");
+    box.innerText += msg;
+    box.scrollTop = box.scrollHeight;
 });
 
 
-// ---------------- DEPLOY FUNCTION ----------------
+// ---------------- DEPLOY ----------------
 async function deployRepo() {
     const repo = document.getElementById("repo").value;
 
@@ -77,61 +85,47 @@ async function deployRepo() {
         return;
     }
 
-    try {
-        const res = await fetch("/deploy", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({ repo })
-        });
+    const res = await fetch("/deploy", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ repo })
+    });
 
-        const data = await res.json();
+    const data = await res.json();
 
-        if (data.error) {
-            alert(data.error);
-        } else {
-            alert("🚀 Deployed successfully!\n" + data.url);
-            loadDeployments();
-        }
-
-    } catch (err) {
-        alert("Deployment failed");
-        console.error(err);
+    if (data.error) {
+        alert(data.error);
+    } else {
+        alert("🚀 Deployed!\n" + data.url);
+        loadDeployments();
     }
 }
 
 
 // ---------------- LOAD DEPLOYMENTS ----------------
 async function loadDeployments() {
-    try {
-        const res = await fetch("/deployments");
-        const data = await res.json();
+    const res = await fetch("/deployments");
+    const data = await res.json();
 
-        const container = document.getElementById("deployments");
-        container.innerHTML = "";
+    const div = document.getElementById("deployments");
+    div.innerHTML = "";
 
-        data.forEach(d => {
-            const div = document.createElement("div");
+    data.forEach(d => {
+        const el = document.createElement("div");
 
-            div.innerHTML = `
-                <p><b>${d.name}</b></p>
-                <a href="${d.url}" target="_blank">${d.url}</a>
-                <hr/>
-            `;
+        el.innerHTML = `
+            <b>${d.name}</b><br>
+            <a href="${d.url}" target="_blank">${d.url}</a>
+            <hr>
+        `;
 
-            container.appendChild(div);
-        });
-
-    } catch (err) {
-        console.error("Error loading deployments", err);
-    }
+        div.appendChild(el);
+    });
 }
 
 
 // ---------------- AUTO REFRESH ----------------
 setInterval(loadDeployments, 5000);
-
-
-// ---------------- INITIAL LOAD ----------------
 loadDeployments();

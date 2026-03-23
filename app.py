@@ -8,7 +8,7 @@ import psutil
 from flask import Flask, request, jsonify, render_template
 from flask_socketio import SocketIO
 
-# ---------------- CONFIG ----------------
+# ---------------- APP SETUP ----------------
 app = Flask(__name__)
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode="eventlet")
 
@@ -21,13 +21,19 @@ if not os.path.exists(DEPLOY_DIR):
 deployments = []
 
 
+# ---------------- SOCKET DEBUG ----------------
+@socketio.on("connect")
+def handle_connect():
+    print("🔥 CLIENT CONNECTED")
+
+
 # ---------------- HOME ----------------
 @app.route("/")
 def home():
     return render_template("dashboard.html")
 
 
-# ---------------- DEPLOY FUNCTION ----------------
+# ---------------- DEPLOY ----------------
 @app.route("/deploy", methods=["POST"])
 def deploy():
     data = request.get_json()
@@ -40,31 +46,31 @@ def deploy():
         repo_name = repo.split("/")[-1].replace(".git", "")
         project_path = os.path.join(DEPLOY_DIR, repo_name)
 
-        # remove old folder
+        # remove old
         if os.path.exists(project_path):
             shutil.rmtree(project_path)
 
         # clone repo
         subprocess.run(["git", "clone", repo, project_path], check=True)
 
-        # detect dockerfile
-        dockerfile_path = os.path.join(project_path, "Dockerfile")
-        if not os.path.exists(dockerfile_path):
+        # check Dockerfile
+        dockerfile = os.path.join(project_path, "Dockerfile")
+        if not os.path.exists(dockerfile):
             return jsonify({"error": "❌ No Dockerfile found in repo"}), 400
 
+        image_name = f"{repo_name}_img"
+        container_name = f"{repo_name}_{random.randint(1000,9999)}"
+
         # build image
-        image_name = f"{repo_name.lower()}_img"
         subprocess.run(
             ["docker", "build", "-t", image_name, project_path],
             check=True
         )
 
-        # generate random port
+        # random port
         port = random.randint(5001, 5999)
 
         # run container
-        container_name = f"{repo_name.lower()}_{port}"
-
         subprocess.run([
             "docker", "run", "-d",
             "-p", f"{port}:5000",
@@ -76,16 +82,14 @@ def deploy():
 
         deployments.append({
             "name": repo_name,
-            "url": url,
-            "container": container_name
+            "url": url
         })
 
-        # emit log
-        socketio.emit("logs", f"\n🚀 Deployed {repo_name} at {url}\n")
+        socketio.emit("logs", f"🚀 Deployed {repo_name} → {url}\n")
 
         return jsonify({"url": url})
 
-    except subprocess.CalledProcessError as e:
+    except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 
@@ -95,17 +99,13 @@ def get_deployments():
     return jsonify(deployments)
 
 
-# ---------------- WEBHOOK AUTO DEPLOY ----------------
+# ---------------- WEBHOOK ----------------
 @app.route("/webhook", methods=["POST"])
 def webhook():
     data = request.json
-
     try:
         repo = data["repository"]["clone_url"]
-
-        # reuse deploy logic
         return deploy()
-
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -113,22 +113,21 @@ def webhook():
 # ---------------- CPU MONITOR ----------------
 def cpu_monitor():
     while True:
-        cpu = psutil.cpu_percent()
+        cpu = psutil.cpu_percent(interval=1)
+        print("CPU:", cpu)
 
-        # emit cpu
         socketio.emit("cpu", cpu)
 
-        # alert
         if cpu > 50:
             socketio.emit("alert", f"⚠️ High CPU: {cpu}%")
 
         time.sleep(2)
 
 
-# ---------------- LOG SIMULATION ----------------
+# ---------------- LOG STREAM ----------------
 def log_stream():
     while True:
-        socketio.emit("logs", f"📜 Running... CPU stable\n")
+        socketio.emit("logs", "📜 System running...\n")
         time.sleep(5)
 
 
